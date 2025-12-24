@@ -1,0 +1,263 @@
+R SCRIPT: main_analysis.R
+
+# ==============================================================================
+# PROJECT: X-ALD Transcriptomic & Epigenetic Meta-Analysis
+# AUTHOR: [Harun Bayrak]
+# DATE: December 2025
+# DESCRIPTION: 
+#   This script performs a meta-analysis of X-Linked Adrenoleukodystrophy (X-ALD).
+#   It integrates two microarray datasets (GSE117647 & GSE34308), identifies
+#   a core gene signature, performs pathway enrichment (GO/KEGG), and predicts
+#   master regulator miRNAs targeting the ABCD1 gene.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. SETUP & LIBRARIES
+# ------------------------------------------------------------------------------
+# Install packages if missing (Uncomment if needed)
+# if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+# BiocManager::install(c("oligo", "limma", "hgu133plus2.db", "clusterProfiler", 
+#                        "org.Hs.eg.db", "enrichplot", "multiMiR", "pd.hg.u133.plus.2"))
+# install.packages(c("ggplot2", "dplyr", "VennDiagram", "ggrepel", "RColorBrewer", "grid"))
+
+library(oligo)
+library(limma)
+library(pd.hg.u133.plus.2)
+library(hgu133plus2.db)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(enrichplot)
+library(multiMiR)
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+library(VennDiagram)
+library(grid)
+library(RColorBrewer)
+
+# Create results directory if it doesn't exist
+dir.create("results", showWarnings = FALSE)
+
+# ------------------------------------------------------------------------------
+# 2. HELPER FUNCTIONS
+# ------------------------------------------------------------------------------
+
+# Function to filter best probe per gene (lowest P-value)
+filter_unique_genes <- function(df) {
+  df_clean <- df[!is.na(df$GeneSymbol) & df$GeneSymbol != rownames(df), ]
+  df_unique <- df_clean %>%
+    group_by(GeneSymbol) %>%
+    slice_min(order_by = P.Value, n = 1) %>%
+    ungroup()
+  return(as.data.frame(df_unique))
+}
+
+# Function to create and save Volcano Plot
+plot_volcano <- function(data, title_sub, fc_cutoff, filename) {
+  data$DiffExpressed <- "NO"
+  data$DiffExpressed[data$logFC > fc_cutoff & data$P.Value < 0.05] <- "UP"
+  data$DiffExpressed[data$logFC < -fc_cutoff & data$P.Value < 0.05] <- "DOWN"
+  
+  p <- ggplot(data, aes(x = logFC, y = -log10(P.Value), col = DiffExpressed)) +
+    geom_point(alpha = 0.6, size = 1.5) +
+    scale_color_manual(values = c("DOWN" = "#0073C2", "NO" = "grey85", "UP" = "#EF1A2C")) +
+    geom_vline(xintercept = c(-fc_cutoff, fc_cutoff), linetype = "dashed") +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+    theme_classic() +
+    labs(title = "Differential Expression", subtitle = title_sub, x = "Log2 Fold Change", y = "-Log10 P-Value")
+  
+  ggsave(paste0("results/", filename), plot = p, width = 8, height = 6)
+  return(data)
+}
+
+# ------------------------------------------------------------------------------
+# 3. DATA PROCESSING: GSE117647 (Dataset 1)
+# ------------------------------------------------------------------------------
+message("Processing GSE117647...")
+
+# Path to .CEL files (Adjust this path if necessary)
+cel_path_1 <- "data/GSE117647" 
+cel_files_1 <- list.celfiles(cel_path_1, full.names = TRUE)
+
+# Read & Normalize (RMA)
+raw_data_1 <- read.celfiles(cel_files_1)
+eset_1 <- rma(raw_data_1)
+
+# Design Matrix (2 Patients, 2 Controls)
+# ASSUMPTION: Alphabetical order -> Control, Control, Patient, Patient
+groups_1 <- factor(c("Control", "Control", "Patient", "Patient"))
+design_1 <- model.matrix(~ 0 + groups_1)
+colnames(design_1) <- c("Control", "Patient")
+
+# Differential Expression (Limma)
+fit_1 <- lmFit(eset_1, design_1)
+contrast_matrix_1 <- makeContrasts(Patient - Control, levels = design_1)
+fit2_1 <- contrasts.fit(fit_1, contrast_matrix_1)
+fit2_1 <- eBayes(fit2_1)
+results_1 <- topTable(fit2_1, number = Inf, adjust.method = "BH")
+
+# Annotation
+clean_ids_1 <- sub("_PM", "", rownames(results_1))
+results_1$GeneSymbol <- mapIds(hgu133plus2.db, keys = clean_ids_1, column = "SYMBOL", keytype = "PROBEID", multiVals = "first")
+results_1 <- filter_unique_genes(results_1)
+
+# Volcano Plot (Cutoff: LogFC > 0.5)
+res_1_final <- plot_volcano(results_1, "GSE117647 (LogFC > 0.5)", 0.5, "Volcano_GSE117647.pdf")
+sig_genes_1 <- res_1_final$GeneSymbol[res_1_final$DiffExpressed != "NO"]
+
+# ------------------------------------------------------------------------------
+# 4. DATA PROCESSING: GSE34308 (Dataset 2)
+# ------------------------------------------------------------------------------
+message("Processing GSE34308...")
+
+cel_path_2 <- "data/GSE34308"
+cel_files_2 <- list.celfiles(cel_path_2, full.names = TRUE)
+
+raw_data_2 <- read.celfiles(cel_files_2)
+eset_2 <- rma(raw_data_2)
+
+# Design Matrix (5 Controls, 5 Patients)
+# ASSUMPTION: Check file order. Usually Controls then Patients in this dataset.
+groups_2 <- factor(c(rep("Control", 5), rep("Patient", 5)))
+design_2 <- model.matrix(~ 0 + groups_2)
+colnames(design_2) <- c("Control", "Patient")
+
+fit_2 <- lmFit(eset_2, design_2)
+contrast_matrix_2 <- makeContrasts(Patient - Control, levels = design_2)
+fit2_2 <- contrasts.fit(fit_2, contrast_matrix_2)
+fit2_2 <- eBayes(fit2_2)
+results_3 <- topTable(fit2_2, number = Inf, adjust.method = "BH")
+
+clean_ids_2 <- sub("_PM", "", rownames(results_2))
+results_2$GeneSymbol <- mapIds(hgu133plus2.db, keys = clean_ids_2, column = "SYMBOL", keytype = "PROBEID", multiVals = "first")
+results_2 <- filter_unique_genes(results_2)
+
+# Volcano Plot (Cutoff: LogFC > 0.25 - Relaxed)
+res_2_final <- plot_volcano(results_2, "GSE34308 (LogFC > 0.25)", 0.25, "Volcano_GSE34308.pdf")
+sig_genes_2 <- res_2_final$GeneSymbol[res_2_final$DiffExpressed != "NO"]
+
+# ------------------------------------------------------------------------------
+# 5. META-ANALYSIS: INTERSECTION & VENN DIAGRAM
+# ------------------------------------------------------------------------------
+message("Performing Intersection Analysis...")
+
+common_genes <- intersect(sig_genes_1, sig_genes_2)
+write.csv(common_genes, "results/Core_Gene_Signature.csv", row.names = FALSE)
+
+# Venn Diagram
+pdf("results/Figure3_Venn_Diagram.pdf", width = 8, height = 8)
+venn.plot <- draw.pairwise.venn(
+  area1 = length(sig_genes_1),
+  area2 = length(sig_genes_2),
+  cross.area = length(common_genes),
+  category = c("GSE117647\n(LogFC > 0.5)", "GSE34308\n(LogFC > 0.25)"),
+  fill = c("#EF1A2C", "#0073C2"),
+  lty = "blank", alpha = 0.6,
+  cat.cex = 1.4, cat.pos = c(0, 0)
+)
+grid.draw(venn.plot)
+dev.off()
+
+message(paste("Core Signature Genes Identified:", length(common_genes)))
+
+# ------------------------------------------------------------------------------
+# 6. PATHWAY ENRICHMENT (GO & KEGG)
+# ------------------------------------------------------------------------------
+message("Running Pathway Enrichment...")
+
+entrez_ids <- bitr(common_genes, fromType="SYMBOL", toType="ENTREZID", OrgDb=org.Hs.eg.db)
+gene_input <- entrez_ids$ENTREZID
+
+# GO Analysis
+go_res <- enrichGO(gene = gene_input, OrgDb = org.Hs.eg.db, ont = "BP", pvalueCutoff = 0.05, readable = TRUE)
+p_go <- dotplot(go_res, showCategory=15) + ggtitle("GO: Biological Processes")
+ggsave("results/Figure_Pathway_GO.pdf", p_go, width=10, height=8)
+
+# KEGG Analysis
+kegg_res <- enrichKEGG(gene = gene_input, organism = 'hsa', pvalueCutoff = 0.1)
+kegg_res <- setReadable(kegg_res, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+p_kegg <- dotplot(kegg_res, showCategory=15) + ggtitle("KEGG Pathways")
+ggsave("results/Figure_Pathway_KEGG.pdf", p_kegg, width=10, height=8)
+
+# ------------------------------------------------------------------------------
+# 7. miRNA MASTER REGULATOR ANALYSIS (multiMiR)
+# ------------------------------------------------------------------------------
+message("Running miRNA Analysis (This may take time)...")
+
+# A. Validated Targets
+val_results <- get_multimir(org="hsa", target=common_genes, table="validated", summary=TRUE)
+df_val <- val_results@data
+df_val$type <- "Validated"
+
+# B. Predicted Targets (Batch Processing to avoid timeout)
+# Using top 10% predictions
+batch_size <- 50
+batches <- split(common_genes, ceiling(seq_along(common_genes)/batch_size))
+df_pre_list <- list()
+
+pb <- txtProgressBar(min=0, max=length(batches), style=3)
+for(i in 1:length(batches)) {
+  tryCatch({
+    res <- get_multimir(org="hsa", target=batches[[i]], table="predicted", predicted.cutoff.type="p", predicted.cutoff=10)
+    df_pre_list[[i]] <- res@data
+  }, error=function(e){})
+  setTxtProgressBar(pb, i)
+}
+close(pb)
+
+df_pre <- do.call(rbind, df_pre_list)
+df_pre$type <- "Predicted"
+
+# C. Combine Data
+cols <- c("mature_mirna_id", "target_symbol", "database", "type")
+full_mirna_data <- rbind(df_val[, cols], df_pre[, cols])
+
+# D. Top 20 Master Regulators Plot (Stacked Bar)
+ranking <- full_mirna_data %>%
+  group_by(mature_mirna_id) %>%
+  summarise(Unique_Targets = n_distinct(target_symbol)) %>%
+  arrange(desc(Unique_Targets))
+
+top20 <- head(ranking$mature_mirna_id, 20)
+plot_data <- full_mirna_data %>% filter(mature_mirna_id %in% top20)
+plot_data$mature_mirna_id <- factor(plot_data$mature_mirna_id, levels = rev(top20))
+
+# Custom Palette
+db_count <- length(unique(plot_data$database))
+my_cols <- colorRampPalette(brewer.pal(8, "Set1"))(db_count)
+
+p_stack <- ggplot(plot_data, aes(x=mature_mirna_id, fill=database)) +
+  geom_bar(width=0.7) + coord_flip() +
+  scale_fill_manual(values=my_cols) + theme_classic() +
+  labs(title="Top 20 Master Regulator miRNAs", x="miRNA", y="Total Interaction Hits")
+ggsave("results/Figure4_Top20_miRNAs.pdf", p_stack, width=10, height=8)
+
+# ------------------------------------------------------------------------------
+# 8. ABCD1 TARGETING miRNAs (High Confidence)
+# ------------------------------------------------------------------------------
+message("Analyzing ABCD1 Specific Targets...")
+
+abcd1_data <- full_mirna_data %>% filter(target_symbol == "ABCD1")
+
+# Filter: Must be present in at least 2 databases
+abcd1_filtered <- abcd1_data %>%
+  group_by(mature_mirna_id) %>%
+  filter(n_distinct(database) >= 2) %>%
+  ungroup()
+
+# Plotting ABCD1 Targets
+count_order <- abcd1_filtered %>%
+  group_by(mature_mirna_id) %>%
+  summarise(cnt = n()) %>%
+  arrange(desc(cnt))
+
+abcd1_filtered$mature_mirna_id <- factor(abcd1_filtered$mature_mirna_id, levels = rev(count_order$mature_mirna_id))
+
+p_abcd1 <- ggplot(abcd1_filtered, aes(x=mature_mirna_id, fill=database)) +
+  geom_bar(width=0.7) + coord_flip() +
+  scale_fill_manual(values=my_cols) + theme_classic() +
+  labs(title="miRNAs Targeting ABCD1 Gene", subtitle="High Confidence (>= 2 Databases)", x="miRNA", y="Evidence Count")
+
+ggsave("results/Figure5_ABCD1_miRNAs.pdf", p_abcd1, width=10, height=8)
+
+message("ANALYSIS COMPLETE. Check 'results' folder for all figures and tables.")
