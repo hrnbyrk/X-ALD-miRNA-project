@@ -147,7 +147,7 @@ pathway_summary <- read.delim("results/pathway_analysis/FINAL_ANALYSIS_SUMMARY.t
 ### Database Resources
 - **multiMiR**: 8 integrated miRNA-target databases
 - **miRBase**: mature.fa for sequence-based ortholog matching
-- **KEGG**: Pathway database (mouse: mmu, human: hsa)
+- **KEGG**: Pathway database ( human: hsa)
 - **Gene Ontology**: BP, MF, CC ontologies
 
     ## ⚙️ Built-in Error Handling
