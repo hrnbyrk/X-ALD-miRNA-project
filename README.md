@@ -9,6 +9,15 @@ This repository contains the R code for the meta-analysis of X-Linked Adrenoleuk
 1. **GSE117647**: Fibroblasts from X-ALD patients vs Controls.
 2. **GSE34308**: Fibroblasts from X-ALD patients vs Controls.
 
+### Key Capabilities
+
+- Single and multi-dataset comparisons
+- Conservative (adj.P < 0.05) and liberal (P < 0.05) DEG thresholds
+- Comprehensive miRNA target prediction (validated & predicted targets)
+- Cross-species orthology analysis
+- Built-in error handling for large-scale analyses
+
+  
 ## How to Run
 1. Create a folder named `data`.
 2. Inside `data`, create two subfolders: `GSE117647` and `GSE34308`.
