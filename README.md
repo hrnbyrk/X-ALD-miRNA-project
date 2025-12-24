@@ -1,4 +1,7 @@
 # X-ALD Transcriptomic & Epigenetic Meta-Analysis
+[![R](https://img.shields.io/badge/R-4.4.1-blue.svg)](https://www.r-project.org/)
+[![Bioconductor](https://img.shields.io/badge/Bioconductor-3.20-green.svg)](https://bioconductor.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 This repository contains the R code for the meta-analysis of X-Linked Adrenoleukodystrophy (X-ALD). The study integrates transcriptomic data to identify core gene signatures and master regulator miRNAs.
 
