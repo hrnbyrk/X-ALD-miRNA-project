@@ -1,0 +1,6 @@
+My_ALD_Project/
+├── main_analysis.R           <-- Aşağıdaki kod buraya yapıştırılacak
+├── data/
+│   ├── GSE117647/            <-- Dataset 1 .CEL dosyaları burada olmalı
+│   └── GSE34308/             <-- Dataset 2 .CEL dosyaları burada olmalı
+└── results/                  <-- Kod tüm çıktıları (PDF, CSV) buraya kaydedecek
