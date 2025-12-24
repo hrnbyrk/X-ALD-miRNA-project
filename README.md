@@ -139,7 +139,6 @@ pathway_summary <- read.delim("results/pathway_analysis/FINAL_ANALYSIS_SUMMARY.t
 - **Operating Systems**: Windows, macOS, Linux
 
 ### Array Platforms Supported
-- **Mouse**: Affymetrix Mouse Gene 1.0 ST Array (MoGene-1_0-st)
 - **Human**: Affymetrix Human Genome U133 Plus 2.0 Array
 
 ### Annotation Packages
